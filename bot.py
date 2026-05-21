@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import re
+from aiohttp import web
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, FSInputFile
@@ -1744,11 +1745,24 @@ async def main():
     init_db()
     print("🤖 Бот запущен!")
     print(f"👑 Администраторы: {ADMIN_IDS}")
-    
+
     asyncio.create_task(scheduler(bot))
-    
+    asyncio.create_task(start_web_server())  # <--- ДОБАВЬТЕ ЭТУ СТРОКУ
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
 
+
+async def health_check(request):
+    return web.Response(text="OK")
+
+async def start_web_server():
+    app = web.Application()
+    app.router.add_get('/health', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get('PORT', 10000)))
+    await site.start()
+    print(f"✅ Health check server started on port {os.environ.get('PORT', 10000)}")
