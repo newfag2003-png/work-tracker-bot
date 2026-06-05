@@ -10,7 +10,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = list(map(int, os.getenv("ADMIN_IDS", "").split(",")))
 
 # Настройки работы
-DEFAULT_HOURLY_RATE = 100
+DEFAULT_HOURLY_RATE = 200
 NIGHT_BONUS = 1.2
 NIGHT_START = 22
 NIGHT_END = 6

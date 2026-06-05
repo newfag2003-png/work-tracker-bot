@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from aiohttp import web
+import os
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, FSInputFile
@@ -22,8 +22,6 @@ from database import (
     delete_work_session, update_work_session, get_salary_payment_by_id,
     get_all_objects_with_status, show_object, delete_object, get_object_usage_stats,
     object_exists, update_work_session_time, update_work_session_object, update_work_session_report,
-    get_available_months, get_available_years, get_monthly_summary, get_yearly_summary,
-    get_global_available_months, get_global_available_years, get_global_monthly_summary, get_global_yearly_summary,
     get_forecast_stats_30_days, get_all_objects_stats_all_time, get_expenses_stats_last_30_days, get_payments_stats_last_30_days
 )
 from keyboards import (
@@ -31,9 +29,8 @@ from keyboards import (
     get_objects_keyboard, get_confirm_keyboard, get_night_shift_inline,
     get_expense_confirm_inline, get_salary_confirm_inline, get_edit_sessions_keyboard,
     get_edit_field_keyboard, get_manage_objects_keyboard,
-    get_archive_menu_keyboard, get_admin_archive_menu_keyboard,
-    get_years_keyboard, get_months_keyboard,
-    get_report_menu_keyboard, get_years_keyboard_for_report, get_months_keyboard_for_report
+    get_report_menu_keyboard, get_years_keyboard_for_report, get_months_keyboard_for_report,
+    get_inline_months_keyboard  # <--- ДОБАВИТЬ ЭТУ СТРОКУ
 )
 from utils.helpers import is_admin, format_duration, validate_time_format
 from utils.excel_generator import (
@@ -44,7 +41,7 @@ from utils.excel_generator import (
     create_admin_monthly_archive_excel,
     create_admin_yearly_archive_excel
 )
-from handlers import archive
+from handlers import admin  # <--- ДОБАВИТЬ ЭТУ СТРОКУ
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +67,7 @@ class WorkStates(StatesGroup):
     waiting_fix_field = State()
     waiting_new_time = State()
     waiting_new_report = State()
-    waiting_new_object = State()  # <--- ДОБАВИТЬ ЭТУ СТРОКУ
+    waiting_new_object = State()
     waiting_manual_end_time = State()
     waiting_name = State()
     confirming_delete = State()
@@ -84,15 +81,12 @@ class WorkStates(StatesGroup):
     admin_choosing_report_user = State()
     admin_managing_objects = State()
     admin_confirming_delete_object = State()
-    archive_menu = State()
-    archive_choosing_year = State()
-    archive_choosing_month = State()
-    admin_archive_menu = State()
-    admin_archive_choosing_year = State()
-    admin_archive_choosing_month = State()
     admin_reports_menu = State()
     admin_report_choosing_year = State()
     admin_report_choosing_month = State()
+    employee_export_menu = State()
+    employee_export_choosing_year = State()
+    employee_export_choosing_month = State()
     
 # Хранилище активных сессий
 active_work_sessions = {}
@@ -158,15 +152,34 @@ async def start_work(message: Message, state: FSMContext):
     user_id = message.from_user.id
     is_admin_user = user_id in ADMIN_IDS
     
+    # Проверка: есть ли активная работа в памяти
     if user_id in active_work_sessions:
         await message.answer("⚠️ Вы уже работаете! Сначала завершите смену.")
+        await show_main_menu(message, state, working=True)
+        return
+    
+    # Дополнительная проверка: есть ли незавершённая смена в базе
+    from database import execute_query
+    active_session = execute_query(
+        "SELECT * FROM work_sessions WHERE user_id = ? AND (daily_report IS NULL OR daily_report = '') ORDER BY start_time DESC LIMIT 1",
+        (user_id,), 
+        fetch_one=True
+    )
+    
+    if active_session:
+        # Восстанавливаем сессию в память
+        active_work_sessions[user_id] = {
+            "object_name": active_session["object_name"],
+            "start_time": datetime.fromisoformat(active_session["start_time"])
+        }
+        await message.answer("⚠️ Ваша предыдущая смена восстановлена! Нажмите ⛔ ЗАКОНЧИТЬ РАБОТУ")
+        await show_main_menu(message, state, working=True)
         return
     
     last_object = get_last_used_object(user_id)
     available_objects = get_objects()
     
     if last_object and last_object in available_objects:
-        # Убираем кнопку "ДРУГОЙ ОБЪЕКТ" для всех
         keyboard = ReplyKeyboardMarkup(
             keyboard=[
                 [KeyboardButton(text=f"🔄 {last_object} (последний)")],
@@ -1588,6 +1601,11 @@ async def show_help(message: Message):
 
 async def show_main_menu(message: Message, state: FSMContext, working: bool = False):
     user_id = message.from_user.id
+    
+    # Если параметр working не передан - определяем сами
+    if not working:
+        working = user_id in active_work_sessions
+    
     keyboard = get_main_keyboard(user_id, working)
     
     if user_id in ADMIN_IDS:
@@ -1738,31 +1756,165 @@ async def reports_back(message: Message, state: FSMContext):
         await state.set_state("admin_menu")
         await admin_panel(message, state)
 
+# ============= ЭКСПОРТ ДЛЯ СОТРУДНИКА =============
+
+@dp.message(F.text == "📎 МОЙ ЭКСПОРТ")
+async def employee_export_menu(message: Message, state: FSMContext):
+    from keyboards import get_employee_export_menu_keyboard
+    await state.set_state("employee_export_menu")
+    await message.answer(
+        "📎 *МОЙ ЭКСПОРТ*\n\nВыберите тип отчёта:",
+        reply_markup=get_employee_export_menu_keyboard(),
+        parse_mode="Markdown"
+    )
+
+
+@dp.message(F.text == "📎 МОЙ ЭКСПОРТ ЗА ТЕКУЩИЙ МЕСЯЦ")
+async def employee_export_current_month(message: Message, state: FSMContext):
+    user_id = message.from_user.id
+    now = datetime.now()
+    
+    await message.answer(f"📊 Формирую ваш отчёт за {now.strftime('%B %Y')}...")
+    
+    try:
+        from utils.excel_generator import create_monthly_archive_excel
+        filename = create_monthly_archive_excel(user_id, now.year, now.month)
+        
+        if filename and os.path.exists(filename):
+            document = FSInputFile(filename)
+            await message.answer_document(
+                document=document,
+                caption=f"📊 Ваш отчёт за {now.strftime('%B %Y')}"
+            )
+            os.remove(filename)
+        else:
+            await message.answer("❌ Нет данных за текущий месяц")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+    
+    await state.clear()
+
+
+@dp.message(F.text == "📁 МОИ МЕСЯЧНЫЕ ОТЧЁТЫ")
+async def employee_monthly_reports(message: Message, state: FSMContext):
+    current_year = datetime.now().year
+    await state.update_data(selected_year=current_year, export_type="monthly")
+    # НЕ устанавливаем state, потому что используем callback_query
+    
+    # Используем новую inline-клавиатуру
+    await message.answer(
+        f"📅 **ВЫБЕРИТЕ МЕСЯЦ {current_year} ГОДА:**",
+        reply_markup=get_inline_months_keyboard(current_year),
+        parse_mode="Markdown"
+    )
+
+@dp.message(F.text == "📁 МОИ ГОДОВЫЕ ОТЧЁТЫ")
+async def employee_yearly_reports(message: Message, state: FSMContext):
+    await state.update_data(export_type="yearly")
+    await state.set_state(WorkStates.employee_export_choosing_year)
+    
+    await message.answer(
+        "📅 *ВВЕДИТЕ ГОД (например: 2026):*",
+        parse_mode="Markdown"
+    )
+
+@dp.callback_query(F.data.startswith("report_month_"))
+async def employee_choose_month(callback: CallbackQuery, state: FSMContext):
+    """Обработчик выбора месяца"""
+    
+    print(f"🔥 Хендлер месяцев сработал! Данные: {callback.data}")
+    
+    await callback.answer()
+    
+    # Кнопка "Назад"
+    if callback.data == "report_month_back":
+        await callback.message.delete()
+        return
+    
+    # Разбираем данные: "report_month_01 ЯНВАРЬ_2026"
+    parts = callback.data.split("_")
+    month_with_name = parts[2]      # "01 ЯНВАРЬ"
+    year = parts[3]                 # "2026"
+    
+    # Берём только число из месяца
+    month_num = int(month_with_name.split()[0])  # "01" -> 1
+    
+    # Удаляем сообщение с кнопками
+    await callback.message.delete()
+    
+    # Формируем отчёт
+    status_msg = await callback.message.answer(f"📊 Формирую ваш отчёт за {month_with_name} {year}...")
+    
+    try:
+        from utils.excel_generator import create_monthly_archive_excel
+        filename = create_monthly_archive_excel(
+            callback.from_user.id,
+            int(year),
+            month_num
+        )
+        
+        await status_msg.delete()
+        
+        if filename and os.path.exists(filename):
+            document = FSInputFile(filename)
+            await callback.message.answer_document(
+                document=document,
+                caption=f"✅ Ваш отчёт за {month_with_name} {year}"
+            )
+            os.remove(filename)
+        else:
+            await callback.message.answer(f"❌ Нет данных за {month_with_name} {year}")
+        
+        await state.clear()
+        
+    except Exception as e:
+        await status_msg.delete()
+        await callback.message.answer(f"❌ Ошибка: {e}")
+
+@dp.message(WorkStates.employee_export_choosing_year)
+async def employee_choose_year_text(message: Message, state: FSMContext):
+    """Обработчик текстового ввода года для годового отчёта"""
+    
+    try:
+        year = int(message.text.strip())
+        
+        if year < 2000 or year > 2100:
+            await message.answer("❌ Введите корректный год (например: 2026)")
+            return
+        
+        await message.answer(f"📊 Формирую ваш отчёт за {year} год...")
+        
+        from utils.excel_generator import create_yearly_archive_excel
+        filename = create_yearly_archive_excel(message.from_user.id, year)
+        
+        if filename and os.path.exists(filename):
+            document = FSInputFile(filename)
+            await message.answer_document(
+                document=document,
+                caption=f"✅ Ваш годовой отчёт за {year} год"
+            )
+            os.remove(filename)
+        else:
+            await message.answer(f"❌ Нет данных за {year} год")
+        
+        await state.clear()
+        
+    except ValueError:
+        await message.answer("❌ Введите корректный год (цифрами, например: 2026)")
+     
 # ============= ЗАПУСК =============
-dp.include_router(archive.router)
+
+# Подключаем роутеры
+dp.include_router(admin.router)  # <--- ДОБАВИТЬ ЭТУ СТРОКУ
 
 async def main():
     init_db()
     print("🤖 Бот запущен!")
     print(f"👑 Администраторы: {ADMIN_IDS}")
-
+    
     asyncio.create_task(scheduler(bot))
-    asyncio.create_task(start_web_server())  # <--- ДОБАВЬТЕ ЭТУ СТРОКУ
-
+    
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
-async def health_check(request):
-    return web.Response(text="OK")
-
-async def start_web_server():
-    app = web.Application()
-    app.router.add_get('/health', health_check)
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get('PORT', 10000)))
-    await site.start()
-    print(f"✅ Health check server started on port {os.environ.get('PORT', 10000)}")

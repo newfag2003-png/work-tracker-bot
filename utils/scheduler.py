@@ -204,10 +204,20 @@ async def scheduler(bot: Bot):
     print(f"📊 Еженедельный отчёт: воскресенье {WEEKLY_REPORT_HOUR:02d}:{WEEKLY_REPORT_MINUTE:02d}")
     print(f"🕐 Автоотмена: каждый час")
     print(f"🗄 Архивация: 1-го числа каждого месяца в 03:00")
+
+async def backup_scheduler(bot: Bot):
+    """Бэкап в Google Sheets раз в день в 02:00"""
+    now = datetime.now()
+    
+    if now.hour == 2 and now.minute == 0:
+        from database import backup_to_google_sheets
+        print("📦 Запущен бэкап в Google Sheets...")
+        backup_to_google_sheets()
+        await asyncio.sleep(60)
     
     while True:
         await daily_reminder(bot)
         await weekly_report(bot)
         await auto_cancel_expired(bot)
-        await archive_scheduler(bot)
+        await backup_scheduler(bot)  # <--- ДОБАВИТЬ ЭТУ СТРОКУ
         await asyncio.sleep(30)
