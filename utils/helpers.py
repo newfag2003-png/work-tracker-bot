@@ -1,4 +1,17 @@
 from config import ADMIN_IDS
+from datetime import datetime
+import pytz
+
+# Часовой пояс Киев
+KYIV_TZ = pytz.timezone('Europe/Kiev')
+
+def now_local():
+    """
+    Возвращает текущее время в часовом поясе Киева (UTC+2 / UTC+3).
+    Всегда возвращает "осознанный" (timezone-aware) datetime объект.
+    """
+    # Получаем текущее время в UTC и затем преобразуем его в киевское время
+    return datetime.now(pytz.UTC).astimezone(KYIV_TZ)
 
 def is_admin(user_id: int) -> bool:
     """Проверка, является ли пользователь администратором"""

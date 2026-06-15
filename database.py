@@ -5,6 +5,8 @@ import time
 import gspread
 from google.oauth2.service_account import Credentials
 import json
+from datetime import datetime
+from utils.helpers import now_local
 
 DB_PATH = "data/work_tracker.db"
 
@@ -16,7 +18,7 @@ SHEET_ID = "1ioTxs9llMd6oEzvxrG6UQ9vVi4EkO3Y2Ecda_FuG2Aw"  # ВАШ ID
 def get_db_connection():
     os.makedirs("data", exist_ok=True)
     conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = datetime_factory  # ← добавляем эту строку
     return conn
 
 def execute_query(query, params=(), fetch_one=False, fetch_all=False, retries=3):
@@ -195,7 +197,7 @@ def update_balance(user_id: int, earnings_change: int = 0, expenses_change: int 
             UPDATE user_balance 
             SET balance = ?, total_earned = ?, total_expenses = ?, total_paid = ?, last_updated = ?
             WHERE user_id = ?
-        """, (new_balance, new_total_earned, new_total_expenses, new_total_paid, datetime.now(), int(user_id)))
+        """, (new_balance, new_total_earned, new_total_expenses, new_total_paid, now_local(), int(user_id)))
         conn.commit()
         return new_balance
     finally:
@@ -345,7 +347,7 @@ def confirm_salary_payment(payment_id: int):
                 UPDATE salary_payments 
                 SET status = 'confirmed', confirmed_at = ? 
                 WHERE id = ?
-            """, (datetime.now(), payment_id))
+            """, (now_local(), payment_id))
             conn.commit()
             conn.close()
             update_balance(payment["user_id"], paid_change=payment["amount"])
@@ -607,7 +609,7 @@ def get_forecast_stats_30_days():
 
 def auto_cancel_expired_expenses():
     from datetime import datetime, timedelta
-    expiration_time = datetime.now() - timedelta(hours=24)
+    expiration_time = now_local() - timedelta(hours=24)
     
     expenses = execute_query("""
         SELECT * FROM expenses 
@@ -629,7 +631,7 @@ def auto_cancel_expired_expenses():
 
 def auto_cancel_expired_payments():
     from datetime import datetime, timedelta
-    expiration_time = datetime.now() - timedelta(hours=24)
+    expiration_time = now_local() - timedelta(hours=24)
     
     payments = execute_query("""
         SELECT * FROM salary_payments 
@@ -693,7 +695,7 @@ def backup_to_google_sheets():
                 user['role'] == 'admin' and 'Администратор' or 'Сотрудник', 
                 user['hourly_rate'], 
                 user['created_at'],
-                datetime.now().isoformat()
+                now_local().isoformat()
             ])
         
         # 2. Бэкап work_sessions (рабочие смены)
@@ -720,7 +722,7 @@ def backup_to_google_sheets():
                 session['earnings'], 
                 session['daily_report'] or '', 
                 session['created_at'],
-                datetime.now().isoformat()
+                now_local().isoformat()
             ])
         
         # 3. Бэкап expenses (расходы)
@@ -754,7 +756,7 @@ def backup_to_google_sheets():
                 expense['approved_by'] or '',
                 expense['rejected_reason'] or '', 
                 expense['created_at'],
-                datetime.now().isoformat()
+                now_local().isoformat()
             ])
         
         # 4. Бэкап salary_payments (выплаты зарплаты)
@@ -784,7 +786,7 @@ def backup_to_google_sheets():
                 status_text, 
                 payment['confirmed_at'] or '',
                 payment['created_at'],
-                datetime.now().isoformat()
+                now_local().isoformat()
             ])
         
         # 5. Бэкап objects (объекты работы)
@@ -802,10 +804,10 @@ def backup_to_google_sheets():
                 obj['name'], 
                 'Да' if obj['is_hidden'] else 'Нет', 
                 obj['created_at'],
-                datetime.now().isoformat()
+                now_local().isoformat()
             ])
         
-        print(f"✅ Бэкап в Google Sheets выполнен: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"✅ Бэкап в Google Sheets выполнен: {now_local().strftime('%Y-%m-%d %H:%M:%S')}")
         return True
         
     except Exception as e:
@@ -824,3 +826,18 @@ def get_active_session(user_id: int):
     """
     result = execute_query(query, (user_id,), fetch_one=True)
     return result
+
+def datetime_factory(cursor, row):
+    """Преобразует строки в datetime для колонок с датами"""
+    row_dict = {}
+    for idx, col in enumerate(cursor.description):
+        val = row[idx]
+        col_name = col[0]
+        # Колонки, которые содержат даты
+        if col_name in ('start_time', 'end_time', 'created_at', 'confirmed_at', 'last_updated'):
+            try:
+                val = datetime.fromisoformat(val) if val else None
+            except (ValueError, TypeError):
+                pass
+        row_dict[col_name] = val
+    return row_dict

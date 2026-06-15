@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from utils.scheduler import scheduler
+from utils.helpers import now_local
 
 from config import BOT_TOKEN, BUTTONS, DEFAULT_HOURLY_RATE, NIGHT_BONUS, ADMIN_IDS
 from database import (
@@ -280,7 +281,7 @@ async def show_objects_list(message: Message, state: FSMContext):
 
 async def start_work_with_object(message: Message, state: FSMContext, object_name: str):
     user_id = message.from_user.id
-    start_time = datetime.now()
+    start_time = now_local()
     
     active_work_sessions[user_id] = {
         "object_name": object_name,
@@ -325,7 +326,7 @@ async def confirm_stop(message: Message, state: FSMContext):
     
     start_time = session["start_time"]
     object_name = session["object_name"]
-    end_time = datetime.now()
+    end_time = now_local()
     
     if end_time < start_time:
         await state.update_data(
@@ -465,7 +466,7 @@ async def show_balance(message: Message):
     total_expenses = get_total_expenses(user_id)
     total_paid = get_total_paid(user_id)
     
-    today = datetime.now().date()
+    today = now_local())
     sessions_today = get_sessions_for_period(user_id, 1)
     sessions_week = get_sessions_for_period(user_id, 7)
     
@@ -723,7 +724,7 @@ async def confirm_salary_callback(callback: CallbackQuery):
                 f"✅ *ПОДТВЕРЖДЕНИЕ ВЫПЛАТЫ*\n\n"
                 f"👤 Сотрудник: {user['username']}\n"
                 f"💰 Сумма: {payment['amount']:,} ₴\n"
-                f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+                f"📅 Дата: {now_local()rftime('%d.%m.%Y %H:%M')}\n\n"
                 f"✅ Выплата подтверждена сотрудником",
                 parse_mode="Markdown"
             )
@@ -751,7 +752,7 @@ async def reject_salary_callback(callback: CallbackQuery):
             f"❌ *ОТКЛОНЕНИЕ ВЫПЛАТЫ*\n\n"
             f"👤 Сотрудник: {user['username']}\n"
             f"💰 Сумма: {payment['amount']:,} ₴\n"
-            f"📅 Дата: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n\n"
+            f"📅 Дата: {now_local()rftime('%d.%m.%Y %H:%M')}\n\n"
             f"❌ Сотрудник отклонил выплату",
             parse_mode="Markdown"
         )
@@ -1167,7 +1168,7 @@ async def admin_who_is_working(message: Message, state: FSMContext):
         user = get_user(uid)
         if user:
             start_time = session["start_time"]
-            duration = datetime.now() - start_time
+            duration = now_local()start_time
             hours = int(duration.total_seconds() // 3600)
             minutes = int((duration.total_seconds() % 3600) // 60)
             
@@ -1772,7 +1773,7 @@ async def employee_export_menu(message: Message, state: FSMContext):
 @dp.message(F.text == "📎 МОЙ ЭКСПОРТ ЗА ТЕКУЩИЙ МЕСЯЦ")
 async def employee_export_current_month(message: Message, state: FSMContext):
     user_id = message.from_user.id
-    now = datetime.now()
+    now = now_local()
     
     await message.answer(f"📊 Формирую ваш отчёт за {now.strftime('%B %Y')}...")
     
@@ -1797,7 +1798,7 @@ async def employee_export_current_month(message: Message, state: FSMContext):
 
 @dp.message(F.text == "📁 МОИ МЕСЯЧНЫЕ ОТЧЁТЫ")
 async def employee_monthly_reports(message: Message, state: FSMContext):
-    current_year = datetime.now().year
+    current_year = now_local()ar
     await state.update_data(selected_year=current_year, export_type="monthly")
     # НЕ устанавливаем state, потому что используем callback_query
     

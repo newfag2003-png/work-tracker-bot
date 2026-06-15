@@ -1,4 +1,5 @@
 import asyncio
+from utils.helpers import now_local
 from datetime import datetime, timedelta
 from aiogram import Bot
 
