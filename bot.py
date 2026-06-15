@@ -466,7 +466,7 @@ async def show_balance(message: Message):
     total_expenses = get_total_expenses(user_id)
     total_paid = get_total_paid(user_id)
     
-    today = now_local()
+    today = now_local().date().date()
     sessions_today = get_sessions_for_period(user_id, 1)
     sessions_week = get_sessions_for_period(user_id, 7)
     
@@ -724,7 +724,7 @@ async def confirm_salary_callback(callback: CallbackQuery):
                 f"✅ *ПОДТВЕРЖДЕНИЕ ВЫПЛАТЫ*\n\n"
                 f"👤 Сотрудник: {user['username']}\n"
                 f"💰 Сумма: {payment['amount']:,} ₴\n"
-                f"📅 Дата: {now_local()rftime('%d.%m.%Y %H:%M')}\n\n"
+                f"📅 Дата: {now_local().strftime('%d.%m.%Y %H:%M')}\n\n"
                 f"✅ Выплата подтверждена сотрудником",
                 parse_mode="Markdown"
             )
@@ -752,7 +752,7 @@ async def reject_salary_callback(callback: CallbackQuery):
             f"❌ *ОТКЛОНЕНИЕ ВЫПЛАТЫ*\n\n"
             f"👤 Сотрудник: {user['username']}\n"
             f"💰 Сумма: {payment['amount']:,} ₴\n"
-            f"📅 Дата: {now_local()rftime('%d.%m.%Y %H:%M')}\n\n"
+            f"📅 Дата: {now_local().strftime('%d.%m.%Y %H:%M')}\n\n"
             f"❌ Сотрудник отклонил выплату",
             parse_mode="Markdown"
         )
@@ -1168,7 +1168,7 @@ async def admin_who_is_working(message: Message, state: FSMContext):
         user = get_user(uid)
         if user:
             start_time = session["start_time"]
-            duration = now_local()start_time
+            duration = now_local() - start_time
             hours = int(duration.total_seconds() // 3600)
             minutes = int((duration.total_seconds() % 3600) // 60)
             
@@ -1798,7 +1798,7 @@ async def employee_export_current_month(message: Message, state: FSMContext):
 
 @dp.message(F.text == "📁 МОИ МЕСЯЧНЫЕ ОТЧЁТЫ")
 async def employee_monthly_reports(message: Message, state: FSMContext):
-    current_year = now_local()ar
+    current_year = now_local().year
     await state.update_data(selected_year=current_year, export_type="monthly")
     # НЕ устанавливаем state, потому что используем callback_query
     
