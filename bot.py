@@ -169,9 +169,14 @@ async def start_work(message: Message, state: FSMContext):
     
     if active_session:
         # Восстанавливаем сессию в память
+        start_time = active_session["start_time"]
+        # Если это строка — преобразуем, если уже datetime — оставляем
+        if isinstance(start_time, str):
+            start_time = datetime.fromisoformat(start_time)
+        
         active_work_sessions[user_id] = {
             "object_name": active_session["object_name"],
-            "start_time": datetime.fromisoformat(active_session["start_time"])
+            "start_time": start_time
         }
         await message.answer("⚠️ Ваша предыдущая смена восстановлена! Нажмите ⛔ ЗАКОНЧИТЬ РАБОТУ")
         await show_main_menu(message, state, working=True)
@@ -203,6 +208,7 @@ async def start_work(message: Message, state: FSMContext):
         )
         await state.set_state(WorkStates.choosing_object)
 
+
 @dp.message(WorkStates.choosing_object, F.text.startswith("🔄"))
 async def select_last_object(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -221,6 +227,7 @@ async def select_last_object(message: Message, state: FSMContext):
     
     await start_work_with_object(message, state, object_name)
 
+
 @dp.message(WorkStates.choosing_object, F.text.startswith("📦"))
 async def select_object(message: Message, state: FSMContext):
     object_name = message.text.replace("📦 ", "")
@@ -231,6 +238,7 @@ async def select_object(message: Message, state: FSMContext):
         return
     
     await start_work_with_object(message, state, object_name)
+
 
 @dp.message(WorkStates.choosing_object, F.text == "📋 ВЫБРАТЬ ИЗ СПИСКА")
 async def select_from_list(message: Message, state: FSMContext):
@@ -254,6 +262,7 @@ async def select_from_list(message: Message, state: FSMContext):
 async def cancel_start(message: Message, state: FSMContext):
     await state.set_state(WorkStates.idle)
     await show_main_menu(message, state)
+
 
 async def show_objects_list(message: Message, state: FSMContext):
     user_id = message.from_user.id
@@ -279,6 +288,7 @@ async def show_objects_list(message: Message, state: FSMContext):
     )
     await state.set_state(WorkStates.choosing_object)
 
+
 async def start_work_with_object(message: Message, state: FSMContext, object_name: str):
     user_id = message.from_user.id
     start_time = now_local()
@@ -300,7 +310,6 @@ async def start_work_with_object(message: Message, state: FSMContext, object_nam
         f"✅ Работа начата в {start_time.strftime('%H:%M')} на {object_name}\n\n"
         f"📌 Когда закончите, нажмите ⛔ ЗАКОНЧИТЬ РАБОТУ"
     )
-
 # ============= ЗАКОНЧИТЬ РАБОТУ =============
 
 @dp.message(F.text == BUTTONS["stop_work"])
