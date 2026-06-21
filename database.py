@@ -16,9 +16,16 @@ SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SHEET_ID = "1ioTxs9llMd6oEzvxrG6UQ9vVi4EkO3Y2Ecda_FuG2Aw"  # ВАШ ID
 
 def get_db_connection():
-    os.makedirs("data", exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = datetime_factory  # ← добавляем эту строку
+    # Проверяем, есть ли переменная окружения с путём к базе
+    db_path = os.getenv("DATABASE_PATH", "work_tracker.db")
+    
+    # Если путь относительный — создаём папку
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
     return conn
 
 def execute_query(query, params=(), fetch_one=False, fetch_all=False, retries=3):
