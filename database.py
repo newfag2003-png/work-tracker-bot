@@ -188,16 +188,25 @@ def get_total_paid(user_id: int) -> int:
 def update_balance(user_id: int, earnings_change: int = 0, expenses_change: int = 0, paid_change: int = 0):
     conn = get_db_connection()
     try:
+        # Проверяем, есть ли запись в user_balance
         current = conn.execute("SELECT * FROM user_balance WHERE user_id = ?", (int(user_id),)).fetchone()
+        
+        # Если записи нет — создаём
+        if current is None:
+            conn.execute("INSERT INTO user_balance (user_id, balance, total_earned, total_expenses, total_paid) VALUES (?, 0, 0, 0, 0)", (int(user_id),))
+            conn.commit()
+            current = conn.execute("SELECT * FROM user_balance WHERE user_id = ?", (int(user_id),)).fetchone()
+        
         new_balance = current["balance"] + earnings_change + expenses_change - paid_change
         new_total_earned = current["total_earned"] + earnings_change
         new_total_expenses = current["total_expenses"] + expenses_change
         new_total_paid = current["total_paid"] + paid_change
+        
         conn.execute("""
             UPDATE user_balance 
             SET balance = ?, total_earned = ?, total_expenses = ?, total_paid = ?, last_updated = ?
             WHERE user_id = ?
-        """, (new_balance, new_total_earned, new_total_expenses, new_total_paid, now_local(), int(user_id)))
+        """, (new_balance, new_total_earned, new_total_expenses, new_total_paid, datetime.now(), int(user_id)))
         conn.commit()
         return new_balance
     finally:
