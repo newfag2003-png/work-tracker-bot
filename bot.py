@@ -475,7 +475,7 @@ async def show_balance(message: Message):
     total_expenses = get_total_expenses(user_id)
     total_paid = get_total_paid(user_id)
     
-    today = now_local().date().date()
+    today = now_local().date()
     sessions_today = get_sessions_for_period(user_id, 1)
     sessions_week = get_sessions_for_period(user_id, 7)
     
