@@ -857,3 +857,8 @@ def datetime_factory(cursor, row):
                 pass
         row_dict[col_name] = val
     return row_dict
+
+def get_expense_status(expense_id: int) -> str:
+    """Возвращает статус расхода: pending, approved, rejected"""
+    result = execute_query("SELECT status FROM expenses WHERE id = ?", (expense_id,), fetch_one=True)
+    return result["status"] if result else "unknown"

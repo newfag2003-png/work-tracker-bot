@@ -637,9 +637,23 @@ async def approve_expense_callback(callback: CallbackQuery):
             await callback.answer("⛔ Нет доступа", show_alert=True)
             return
         
+        # ПРОВЕРЯЕМ СТАТУС ПЕРЕД ПОДТВЕРЖДЕНИЕМ
+        from database import get_expense_status
+        status = get_expense_status(expense_id)
+        
+        if status == 'approved':
+            await callback.answer("✅ Этот расход уже подтверждён!", show_alert=True)
+            await callback.message.delete()
+            return
+        elif status == 'rejected':
+            await callback.answer("❌ Этот расход уже отклонён!", show_alert=True)
+            await callback.message.delete()
+            return
+        
         expense = approve_expense(expense_id, admin_id)
         
         if expense:
+            # Отправляем подтверждение и удаляем сообщение
             await callback.message.answer(
                 f"✅ *РАСХОД ПОДТВЕРЖДЁН!*\n\n"
                 f"💰 Сумма: {expense['amount']:,} ₴\n"
@@ -650,6 +664,7 @@ async def approve_expense_callback(callback: CallbackQuery):
             await callback.message.delete()
             await callback.answer("✅ Расход подтверждён", show_alert=True)
             
+            # Уведомляем сотрудника
             user = get_user(expense["user_id"])
             if user:
                 await bot.send_message(
@@ -667,6 +682,7 @@ async def approve_expense_callback(callback: CallbackQuery):
         print(f"Ошибка approve_expense_callback: {e}")
         await callback.answer("❌ Ошибка при подтверждении", show_alert=True)
 
+
 @dp.callback_query(F.data.startswith("expense_reject_"))
 async def reject_expense_callback(callback: CallbackQuery):
     print(f"🔔 Получен callback: {callback.data}")
@@ -677,6 +693,19 @@ async def reject_expense_callback(callback: CallbackQuery):
         
         if admin_id not in ADMIN_IDS:
             await callback.answer("⛔ Нет доступа", show_alert=True)
+            return
+        
+        # ПРОВЕРЯЕМ СТАТУС ПЕРЕД ОТКЛОНЕНИЕМ
+        from database import get_expense_status
+        status = get_expense_status(expense_id)
+        
+        if status == 'approved':
+            await callback.answer("✅ Этот расход уже подтверждён!", show_alert=True)
+            await callback.message.delete()
+            return
+        elif status == 'rejected':
+            await callback.answer("❌ Этот расход уже отклонён!", show_alert=True)
+            await callback.message.delete()
             return
         
         expense = get_expense_by_id(expense_id)
@@ -707,7 +736,7 @@ async def reject_expense_callback(callback: CallbackQuery):
     except Exception as e:
         print(f"Ошибка reject_expense_callback: {e}")
         await callback.answer("❌ Ошибка при отклонении", show_alert=True)
-
+        
 # ============= ПОДТВЕРЖДЕНИЕ ВЫПЛАТЫ (СОТРУДНИК) =============
 
 @dp.callback_query(F.data.startswith("salary_confirm_"))
